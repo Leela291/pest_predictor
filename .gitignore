@@ -1,0 +1,27 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env/
+.env*
+
+# TensorFlow/ML
+*.h5
+*.pb
+*.tflite
+*.ckpt
+
+# System
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Render specific
+*.log
+*.pid
