@@ -3,63 +3,51 @@ import tensorflow as tf
 from PIL import Image
 import numpy as np
 import os
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+
+# Configuration
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB file size limit
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 # Load the trained model
 model = tf.keras.models.load_model('crop_pest_model.h5')
 
-# These should match the folder names in your dataset
+# Class names and pesticide info (keep your existing data)
 class_names = ['healthy', 'aphid', 'mite', 'thrips', 'whitefly', 'bollworm', 'leafminer']
-
-# Pesticide info per pest
 pesticide_info = {
-    'aphid': {
-        'pesticide': 'Imidacloprid 17.8% SL',
-        'dosage': '1 ml per liter of water',
-        'interval': 'Every 10–14 days'
-    },
-    'mite': {
-        'pesticide': 'Abamectin 1.8% EC',
-        'dosage': '0.5 ml per liter of water',
-        'interval': 'Every 7–10 days'
-    },
-    'thrips': {
-        'pesticide': 'Spinosad 45% SC',
-        'dosage': '1 ml per liter of water',
-        'interval': 'Every 7 days'
-    },
-    'whitefly': {
-        'pesticide': 'Acetamiprid 20% SP',
-        'dosage': '0.75 g per liter of water',
-        'interval': 'Every 10–15 days'
-    },
-    'bollworm': {
-        'pesticide': 'Chlorantraniliprole 18.5% SC',
-        'dosage': '0.4 ml per liter of water',
-        'interval': 'Apply at egg-laying stage, then as needed'
-    },
-    'leafminer': {
-        'pesticide': 'Neem Oil 3%',
-        'dosage': '2 ml per liter of water',
-        'interval': 'Every 5–7 days'
-    }
+    # ... (keep your existing pesticide_info dictionary) ...
 }
 
-# Image preprocessing
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 def preprocess_image(image):
     image = image.resize((128, 128))
     image = np.array(image) / 255.0
     image = np.expand_dims(image, axis=0)
     return image
 
-# Flask route
 @app.route('/', methods=['GET', 'POST'])
 def index():
     result = None
     if request.method == 'POST':
+        if 'image' not in request.files:
+            return render_template('index.html', result="⚠️ No file selected")
+            
         file = request.files['image']
-        if file:
+        
+        if file.filename == '':
+            return render_template('index.html', result="⚠️ No file selected")
+            
+        if not allowed_file(file.filename):
+            return render_template('index.html', 
+                                result="⚠️ Invalid file type. Please upload JPG, JPEG, or PNG")
+
+        try:
+            filename = secure_filename(file.filename)
             image = Image.open(file.stream).convert("RGB")
             input_img = preprocess_image(image)
             pred = model.predict(input_img)
@@ -71,13 +59,16 @@ def index():
             elif class_label in pesticide_info:
                 info = pesticide_info[class_label]
                 result = (f"⚠️ The crop is affected by <b>{class_label}</b>.<br>"
-                          f"💊 <b>Recommended pesticide:</b> {info['pesticide']}<br>"
-                          f"🧪 <b>Dosage:</b> {info['dosage']}<br>"
-                          f"⏱️ <b>Spray interval:</b> {info['interval']}")
+                         f"💊 <b>Recommended pesticide:</b> {info['pesticide']}<br>"
+                         f"🧪 <b>Dosage:</b> {info['dosage']}<br>"
+                         f"⏱️ <b>Spray interval:</b> {info['interval']}")
             else:
                 result = f"⚠️ Pest detected: <b>{class_label}</b>. No pesticide info available."
+                
+        except Exception as e:
+            result = f"⚠️ Error processing image: {str(e)}"
 
     return render_template('index.html', result=result)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)), debug=False)
